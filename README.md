@@ -1,4 +1,4 @@
-#Time Series Analysis of Credit Usage in Mexico
+# Time Series Analysis of Credit Usage in Mexico
 
 **Author:** José Gabriel Usiña Mogro  
 **Date:** September 2022
