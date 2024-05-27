@@ -1,0 +1,353 @@
+---
+title: "Evidence 2"
+author: "José Gabriel Usiña Mogro"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    theme: lumen 
+    toc: true
+    toc_float: true
+---
+# a) Introduction
+
+Time series analysis helps to analyze the dynamic change that a variable suffer with the pass of the time. For this type of analysis we use Time Series Data. As Tableau page says, Time series analysis is analyze a sequence of data collected over a interval of time. (Tableau)
+
+# b) Background
+
+Nowadays, household is increasing eacht time. According to Passport, "*The number of households in Mexico is anticipated to expand by 16.9% over the forecast period, reaching 42.5 million by 2040*"(Euromonitor International, 2022). If we look at the indicador **Household credit**, this indicator has increase a lot in the last 6 months according to the Global Economy (Mexico Household credit, billion currency units, June, 2022 - data, chart, s. f.). Both of them mean that household credit is going to increase more, in order that credit and number of household will increase, so we can expect a big increase. 
+
+# c) Description of the Problem Situation
+The Problem Situation tell us about Financiera Ma, a financial company that provides services of credit card in Mexico. The problem is that the use of credit card is not going so good as they expected at the beginning of the year. In this case they compare the use of credit card with countries like Argentina or Brazil, and we can see that there is a big difference between them.
+
+In this case we need to know how the credit in the household changes with the time, this is related with the use of credit card because householders will need more ways to use credit, and credit cards is one of them.
+
+# d) Data and methodology
+```{r include=FALSE,warning=FALSE}
+library(foreign)
+library(devtools)     # simplify many common tasks
+library(xts)          # create time series objects and manipulate time series data
+library(zoo)          # assist xts package in creating time series objects 
+library(tseries)      # time series analysis and computational finance 
+library(stats)        # functions for statistical calculations 
+library(forecast)     # methods and tools for displaying and analyzing univariate time series forecasts 
+library(astsa)        # applied statistical time series analysis 
+library(AER)          # applied econometrics with R 
+library(dynlm)        # dynamic linear models and time series regression relationships 
+library(vars)         # estimation, lag selection, diagnostic testing, forecasting, causality analysis
+library(TSstudio)     # provides a set of tools for descriptive and predictive analytics of time series data
+library(tidyverse)    # collection of R packages designed for data science
+library(ggplot2)      # data visualization package 
+library(dygraphs)     # plots xts time series objects 
+library(quantmod)     # quantitative financial modeling 
+library(scales)       # provide methods for automatically determining breaks and labels axes and legends
+library(lubridate)    # works with dates and times
+library(hrbrthemes)   # compilation of extra ggplot2 themes and scales  
+library(sarima)
+library(vars)
+library(readxl)
+```
+
+```{r}
+data_ev<-read_excel("ev2_data.xlsx")
+```
+
+## Describe dataset 
+```{r}
+str(data_ev)
+summary(data_ev)
+```
+We need to clean the data set first. We have some NA's in some of the variables, Date already in Date format, but not the typicall, so anyway I will change it
+
+**NA's**
+We are going to delet all of the observations with NA
+```{r}
+data_ev<-data_ev%>%
+  filter(unemployment>0)
+```
+**Date**
+```{r}
+data_ev$date<-as.Date(data_ev$date)
+```
+
+Transforming to time series format
+```{r}
+credits<-ts(data_ev$credit_to_households,frequency = 4,start = c(2005,1))
+```
+
+## Plot 
+```{r}
+plot(data_ev$date,data_ev$credit_to_households, type="l",col="blue", lwd=2, xlab ="Date",ylab ="Credit", main = "Credit to Households")
+```
+
+## Decomposing
+```{r}
+credit_dec<-decompose(credits)
+plot(credit_dec)
+```
+Trend an season clearly visible. Season repeating in the same way, two ups and two downs, all of this repeated six times in 5 years. 
+
+## Stationary test
+```{r}
+adf.test(credits)
+#Ho: Non-stationary
+#Ha: Stationary
+```
+The p-values is greater than 0.05. We fail to reject the H0. The time series data is non-stationary
+
+## Serial Autocorrelation
+```{r}
+acf(credits)
+```
+We can observer that there is serial autocorrelation
+```{r}
+Box.test(data_ev$credit_to_households,lag=1,type="Ljung-Box")
+#Ho: No Serial Correlation
+#Ha: Serial Correlation
+```
+p-value <0.05. Reject Null Hypothesis. There is serial autocorrelation 
+
+## Seasonal adjustment
+We could observe seasonal in our time serie data, so we need to make a seasonal adjustment
+```{r}
+seasonal_adjustment = credits - credit_dec$seasonal
+plot(seasonal_adjustment,type="l",col="blue",lwd=2,main="Credit to Households - Seasonal Adjustment")
+
+par(mfrow=c(1,2))
+plot(data_ev$date,data_ev$credit_to_households, type="l",col="blue", lwd=2, xlab ="Date",ylab ="Pesos", main = "Credit to Households")
+plot(seasonal_adjustment,type="l",col="blue",lwd=2,main="Credit to Households - Seasonal Adjustment")
+```
+
+We can observe the seasonal adjustment, but I decided to not consider it for the estimations
+
+# Time Series Regression Analysis
+## Time Series Model 1 
+### Model 1 (ARMA 1,1)
+ARMA might not be the best model because we have non-stationary time series data. Anyways, we are going to check the da
+```{r}
+summary(ARMA.credit<-arma(data_ev$credit_to_households, order=c(1,1)))
+```
+Autoregresive Model is Significant with a level of confidence of 99%. AR has a positive effect on the Credit to Household in 1.004, The Moving Average does not have significance, but it does have a psotivie impact of 0.027.  For ARMA (1-1) we got an AIC of **1622.02**.
+
+#### Diagnosis (Residuals)
+```{r}
+ARMA.residuals<-(ARMA.credit$residuals)
+ARMA.residuals<-na.omit(ARMA.residuals)
+```
+**Grahping**
+```{r}
+checkresiduals(ARMA.residuals)
+```
+
+In the graph it looks like residuals follow a normal distribution, and it has no serial correlation, but it quite not looks stationary
+
+**Test Serial Autocorrelation**
+```{r}
+acf(ARMA.residuals,main="ACF - ARMA (1,1)")    
+Box.test(ARMA.residuals,lag=1,type="Ljung-Box")
+```
+Fail to reject the Ho. P-value is > 0.05 indicating that ARMA model does not show residual serial autocorrelation.
+
+**Stationary Test**
+```{r}
+adf.test(ARMA.residuals)
+```
+The p-value is > 0.05. We reject Null hypothesis, Residuals are non.stationary
+
+### ARIMA (1,1,1)
+ARIMA would be a better model because we are going to transform our time serie data to stationary, because this model use the differences.
+```{r}
+arima1.credit<-arima(data_ev$credit_to_households,order=c(1,1,1))
+print(arima1.credit)
+coeftest(arima1.credit)
+confint(arima1.credit)
+```
+AR1 explains 0.986 of the Stock Price and ma1 -0.775. Both of the values are significant, we can corroborate with the significance coes, and with the fact that the values are between the acceptance range.  The AIC for this model is **683.07**. 
+
+#### Diagnosis (Residuals)
+```{r}
+arima1.residuals<-(arima1.credit$residuals)
+arima1.residuals<-na.omit(arima1.residuals)
+```
+**Grahping**
+```{r}
+checkresiduals(arima1.residuals)
+```
+
+In the graph it looks like residuals follow a normal distribution, and it has no serial correlation, but it quite not looks stationary
+
+**Test Serial Autocorrelation**
+```{r}
+acf(arima1.residuals,main="ACF - ARMA (1,1)")    
+Box.test(arima1.residuals,lag=1,type="Ljung-Box")
+```
+Fail to reject the Ho. P-value is > 0.05 indicating that ARMA model does not show residual serial autocorrelation.
+
+**Stationary Test**
+```{r}
+adf.test(arima1.residuals)
+```
+The p-value is > 0.05. We can fail to reject Null hypothesis and state that Residuals are non.stationary, but p-value < 0.1, we are going to be flexible and  reject the Null hypothesis, Residuals are stationary
+
+
+### ARIMA (1,2,1)
+I decided for this model have d as 2, in order to have differences of 2 lagged periods, so it would be stationary with a high level of confidence
+```{r}
+arima2.credit<-arima(data_ev$credit_to_households,order=c(1,2,1))
+print(arima2.credit)
+coeftest(arima2.credit)
+confint(arima2.credit)
+```
+AR1 explains -0.8045 of the Stock Price and ma1 0.1789. AR1 is the only signifcant estimation for the model, with a level of confidence of 99% (p-value <0.05 and estimation values between the acceptance range).  The AIC for this model is **662.77**. 
+
+#### Diagnosis (Residuals)
+```{r}
+arima2.residuals<-(arima2.credit$residuals)
+arima2.residuals<-na.omit(arima2.residuals)
+```
+**Grahping**
+```{r}
+checkresiduals(arima2.residuals)
+```
+
+In the graph it looks like residuals follow a normal distribution, and it has no serial correlation. For this model residuals, stationary is more visible
+
+**Test Serial Autocorrelation**
+```{r}
+acf(arima2.residuals,main="ACF - ARMA (1,1)")    
+Box.test(arima2.residuals,lag=1,type="Ljung-Box")
+```
+The p-value is \< 0.05. The residuals are stationary
+
+**Stationary Test**
+```{r}
+adf.test(arima2.residuals)
+```
+The p-value is \< 0.05. Reject Null Hypothesis. The residuals are stationary
+
+### Selecting Model
+After analyzing three models (ARMA 1-1, ARIMA 1-1-1 and ARIMA 1-2-1) and their diagnosis tests, the model with the best accuracy and has better "*scores*" in the diagnosis test was ARIMA 1-2-1 because it has the lowest value and it was stationary at a level of confidence of 95% 
+
+### Forecast
+```{r}
+arima_forecast<- forecast(arima2.credit,h=5)
+arima_forecast
+plot(arima_forecast)
+```
+
+## Time Series Model 2
+
+### Selection explanatory variables
+For the VAR Model, I will select the following variables
+
+* gdp-groth: It is and indicator that shows in a general way how is the economy of a country, so it will reflex the economy of household as well. If the gpd is growing, it means that there is more resources (money) in Mexico, so this means, more money for household, so they are going to spend more money, and need more credit
+
+* unemployment: It people does not have a job, they do not have an income. This variable could be interesting because it could has a positive effect in credit(people is going to need more money because they have no job); or it could have negative effect (people do not want credit because they do not want to pay it )
+
+* consumer_confidence: It help us to understand ow consumers feel about spending their own money. If this one is high, this mean that they would be open to buy more stuff of the companies or invest in them, so they will need credit for this. 
+
+* inflation_rate: The inflation rate has an effect on interest rates, so if they are to high, householders are not going to need or want credit. 
+
+**Transform to time series format**
+```{r}
+inflation<-ts(data_ev$inflation_rate,frequency = 4,start = c(2005,1))
+gdp<-ts(data_ev$gdp_growth,frequency = 4,start = c(2005,1))
+unemployment<-ts(data_ev$unemployment,frequency = 4,start = c(2005,1))
+consumer<-ts(data_ev$consumer_confidence,frequency = 4,start = c(2005,1))
+```
+
+### Plots
+```{r}
+par(mfrow=c(2,2))
+plot(data_ev$date,data_ev$inflation_rate,type="l",col="blue",lwd=2,xlab="Date",ylab="Inflation (%)",main="Inflation Rate")
+plot(data_ev$date,data_ev$gdp_growth,type="l",col="blue",lwd=2,xlab="Date",ylab="Growth(%)",main="GDP growth")
+plot(data_ev$date,data_ev$unemployment,type="l",col="blue",lwd=2,xlab="Date",ylab="Unemployment",main="Unemployment Rate")
+plot(data_ev$date,data_ev$unemployment,type="l",col="blue",lwd=2,xlab="Date",ylab="Score",main="Consumer Confidence")
+```
+
+### VAR Model 
+#### Combining Time series 
+```{r}
+creditVAR<-cbind(credits,inflation,gdp,unemployment,consumer)
+colnames(creditVAR)<-cbind("credit","inflation","gdp","unemployment","consumer_sen")
+```
+#### Lag selection
+```{r}
+lag_selection<-VARselect(creditVAR,lag.max=5,type="const",season = 4)
+lag_selection$selection
+lag_selection$criteria
+```
+Lag will be 5 periods
+
+```{r}
+VAR_model1<-VAR(creditVAR,p=1,type="const",season=5)
+summary(VAR_model1)
+```
+**Credit:** For this regression model, lagged GDP, lagged unemployment, and lagged credit (all of them 1) were significant. Credit.l1 increase the credit to household) by 1.004, gdp by 2.91 and unemployment decrease the credit by 15.996. We have a constant of 184.81
+
+**Inflation:** For this model, any variable were significant. This could mean that any of the variables selected explain the inflation, but it explained by other factors. The constant is significant by 90%, and but the effect is very low 
+
+**GDP:** This one is just explained by itself lagged one period. It increase it by 0.486
+
+**Unemployment:** This regression model shows that inflation and the same variable lagged are significant. Inflation lagged 1 period has a negative impacto of -0.149, unemployment lagged increase itself in 6.411. There is a constant that explain 3.25 of the model with this depdendent variable
+
+**Consumer Confidence:** For this model just the lagged variable and a constant are significant. Consumer_sen.l1 increase the depedent variable in 0.756, and the constant is 11.44
+
+#### Residuals
+```{r}
+VAR_model1_credit.r<-residuals(VAR_model1,credit)
+```
+
+### Diagnosis Test
+#### Stationary
+```{r}
+adf.test(as.vector(VAR_model1_credit.r))
+```
+
+Residuals are stationary. P-value < 0.05. Reject NULL hypothesis
+
+#### Serial Autocorrelation
+```{r}
+acf(as.vector(VAR_model1_credit.r))
+Box.test(as.vector(VAR_model1_credit.r),lag=1,type="Ljung-Box")
+```
+Fail to reject the Ho. P-value is > 0.05 indicating that VAR residual’s model does not show residual serial autocorrelation.
+
+### Granger Causality Test
+```{r}
+granger_credit<-causality(VAR_model1,cause="credit")
+granger_credit
+```
+
+**Granger-cause** : p-value>0.05 we fail to reject the Ho. There is no  granger causality between variables
+
+**Instant Causality**: p-value>0.05. We fail to reject the Ho. There is no instant causality between variables
+
+### Forecast
+```{r}
+forecast_1<-predict(VAR_model1,n.ahead=5,ci=0.95) ### forecast for the next four quarters
+fanchart(forecast_1,names="credit",main="Credit to House Holders",xlab="Time Period",ylab="Stock Price")
+forecast_1
+```
+# Conclusions and Recomendations
+
+## Main insights 
+With both models we could appreciate that there will be a growth for this indicator, such as trends indicates.
+In the case of VAR analysis it was interesting that unemployment was a significant variable and it has big impact in the credit to householders. This mean that if householders do not have a job they won't want a credit. 
+GDP growth also is interesting because, it means that meanwhile the country is generating resources, householders will need more credit. 
+
+## Recommendations 
+We have to remember that Credit Card is one way to get credit for household
+
+* Focus marketing on people with a job or an income, this people would be more open to get a credit card, and also will be able to pay their bills. 
+
+* Take advantage of the GDP growing. Check often this indicator, because this would mean that more people would be open to get and use a Credit Card 
+
+* For your estimations in financial and accounting statements and others, consider 184.81 as constant (Constant in VAR MODEL/credit) this will help the company would have a better estimation about the credit of house holders and how this one is behaving
+
+# References 
+
+* Euromonitor International. (2022, julio). Households: Mexico: Country Report. Passport. Recuperado 11 de septiembre de 2022, de https://www.portal.euromonitor.com/portal/?23gAoWUxDNWsBx7Lh%2b1e%2f4tC5ukb3NTju1BTbUmxXIh0snV7eQ4ndg%3d%3d
+
+* Mexico Household credit, billion currency units, June, 2022 - data, chart. (s. f.). TheGlobalEconomy.com. Recuperado 11 de septiembre de 2022, de https://www.theglobaleconomy.com/Mexico/household_credit/ 
+
+* Tableau. (s. f.). Time Series Analysis: Definition, Types, Techniques, and When It’s Used. Recuperado 10 de septiembre de 2022, de https://www.tableau.com/learn/articles/time-series-analysis
